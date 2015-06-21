@@ -1,0 +1,100 @@
+---
+title: "Machine Learning Project"
+author: "Michael A. Kelly"
+date: "June 3, 2015"
+output: html_document
+---
+
+##Abstract:
+We analyze data from Groupware related to Human Activity Recognitions. The data contains information on how well 6 different subjects performed barbell lifts where the data was recorded by accelerometers worn by the subjects. They were asked to perform the exercises correctly and then incorrectly in 5 different ways. Our goal is to predict which incorrent or correct method was used based on the provided data. After examining several different prediction methods, we settled on the Random Forest classification model using repeated K-fold cross validation. Our achieved predition accuracy was 99.4%.
+
+####Load all libraries
+```{r, InitAnalysis, echo=FALSE}
+library(caret); library(kernlab)
+library(doParallel);cl <- makeCluster(detectCores()); registerDoParallel(cl)
+rm()
+setwd("C:/Users/kellym/OneDrive - Brambles/Cousera/8 - Machine Learning/Project Folder")
+startTime <- Sys.time()
+paste0("Start time: ", startTime)
+```
+
+#### Read in the Training Data Set
+```{r, LoadData, echo=TRUE}
+
+trainingData <- read.table(file="pml-training.csv", sep=",",header=TRUE, na.strings=c("NA", "#DIV/0!"))
+dim(trainingData)
+```
+
+#### Clean up the Data Set 
+
+1. Remove rows for new_window = no. All rest of records are NA
+2. Remove Columns which have NA values in them.
+3. Remove the first 7 columns. Do not need times, user, and new_window/num_window rows here.
+4. Convert all Columns except the last one to data type number.
+```{r, CleanData, echo=TRUE}
+trainingData <- trainingData[trainingData$new_window=="no",]
+trainingData <- trainingData[, apply(trainingData, 2, function(x) !any(is.na(x)))]
+trainingData <- trainingData[, -c(1:7)] 
+for(i in c(2:ncol(trainingData)-1)) {trainingData[,i] = as.numeric(as.character(trainingData[,i]))}
+dim(trainingData)
+```
+
+####Create the Training Data Set
+In order to perform cross validation, we split the dataset into a training set and a smaller test set. The training set consists of 70% of the data (13,454 records with 52 predictors) which was used for model selection. The testset was used to get an estimate of the out of sample error. 
+```{r, CreateTrainingData, cache=TRUE, echo=TRUE}
+inTrain <- createDataPartition(y=trainingData$classe, p=0.7, list=FALSE)
+training <- trainingData[inTrain,]
+testing <- trainingData[-inTrain,]
+dim(training)
+dim(testing)
+
+```
+##Analysis
+For this analysis we use the caret package.Random forests improve predictive accuracy by generating a large number of bootstrapped trees  using different random samples of the variables, classifying a case using each tree in this new "forest", and then deciding a final predicted outcome by combining the results across all of the trees using a vote for classification data.
+
+###Method: Using Random Forest ("rf")
+```{r, SettrainingControl, echo=TRUE}
+sub_i <- sample(1:nrow(training), 100, replace=FALSE, prob=NULL)
+set.seed(123); startModTime <- Sys.time() ;paste0("Begin Fit time: ", startModTime)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10
+)
+```
+
+```{r, FitTheModel, echo=TRUE}
+modFit <- train(classe ~ .,method="rf"
+                ,data=training
+                ,subset=sub_i
+                ,proxy=TRUE
+                ,trControl = fitControl
+                ,verbose = FALSE)
+
+modFit
+
+
+new_pred <- predict(modFit, testing)
+confusionMatrix(new_pred, testing$classe)
+
+plot(modFit, main="Accuracy Vs. Predictors")
+
+testingData <- read.table(file="pml-testing.csv"
+                           ,sep=","
+                           ,header=TRUE
+                           ,na.strings=c("NA", "#DIV/0!"))
+testset_pred <- predict(modFit, testingData)
+testset_pred
+
+
+print(modFit$finalModel)
+
+EndTime <- Sys.time(); paste0("End time: ", EndTime) ;TotalTime <- EndTime - startTime
+paste0("Total Run time: ", TotalTime)
+
+varImp(modFit)
+```
+###Results
+The fit used a repeated K-fold cross validation with 10 folds and 10 repeats.
+The model fit only misclassified 50 of the 5763 records yielding an out of sample rate of 99.13% with a 95% Confidence interval from 98.9% to 99.4%.
+
+###Conclusion
