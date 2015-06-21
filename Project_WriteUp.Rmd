@@ -19,6 +19,11 @@ paste0("Start time: ", startTime)
 ```
 
 #### Read in the Training Data Set
+The data are in two seperate files.The first datafile pml-training.csv contains
+19,622 records for the 6 subjects. We will divide this dataset into a training
+set and a test set to support cross validation. The second datafile, contains
+a set of 20 records to calculate the resulting class for submission as part of
+this project.
 ```{r, LoadData, echo=TRUE}
 
 trainingData <- read.table(file="pml-training.csv", sep=",",header=TRUE, na.strings=c("NA", "#DIV/0!"))
@@ -28,8 +33,8 @@ dim(trainingData)
 #### Clean up the Data Set 
 
 1. Remove rows for new_window = no. All rest of records are NA
-2. Remove Columns which have NA values in them.
-3. Remove the first 7 columns. Do not need times, user, and new_window/num_window rows here.
+2. Remove Columns which have NA values in them. There are many columns with all or mostly all rows contaning NA values. These will not contriute anything to our prediction so we removed them.
+3. Remove the first 7 columns. Do not need time, user, and new_window/num_window rows here.
 4. Convert all Columns except the last one to data type number.
 ```{r, CleanData, echo=TRUE}
 trainingData <- trainingData[trainingData$new_window=="no",]
@@ -60,24 +65,35 @@ fitControl <- trainControl(method = "repeatedcv",
                            number = 10,
                            repeats = 10
 )
-```
-
-```{r, FitTheModel, echo=TRUE}
 modFit <- train(classe ~ .,method="rf"
                 ,data=training
-                ,subset=sub_i
+#                ,subset=sub_i
                 ,proxy=TRUE
                 ,trControl = fitControl
                 ,verbose = FALSE)
 
 modFit
+```
 
-
-new_pred <- predict(modFit, testing)
-confusionMatrix(new_pred, testing$classe)
+####Now get the In Sample Error to use to make the model selections.
+Here is show the In Sample error for the final chosen model.
+```{r, InSampleError, echo=TRUE}
+new_pred <- predict(modFit, training)
+confusionMatrix(new_pred, training$classe)
 
 plot(modFit, main="Accuracy Vs. Predictors")
+```
+Plots have been showing the accuracy of the accuracy of the repeated cross-validation vs the number of randomly selected predictors. We see that after about 28 of these the accuracy drops very rapidly. 
 
+####Now calculate the Out of Sample Error.
+We apply our model to the test dataset that we had set asside.
+```{r, OutOfSampleError, echo=TRUE}
+new_pred <- predict(modFit, testing)
+confusionMatrix(new_pred, testing$classe)
+```
+
+Now we apply our model to the test dataset and then show the importance of tha variables.
+```{r, testSetCases, echo=TRUE}
 testingData <- read.table(file="pml-testing.csv"
                            ,sep=","
                            ,header=TRUE
@@ -95,6 +111,11 @@ varImp(modFit)
 ```
 ###Results
 The fit used a repeated K-fold cross validation with 10 folds and 10 repeats.
-The model fit only misclassified 50 of the 5763 records yielding an out of sample rate of 99.13% with a 95% Confidence interval from 98.9% to 99.4%.
+The in Sample error for this set was 100%. For the out of sample error the 
+the model fit only misclassified 50 of the 5763 records yielding an out of sample rate of 99.13% with a 95% Confidence interval from 98.9% to 99.4%.
 
 ###Conclusion
+The model that was created does a good job with this dataset. Some of
+variations of the model also gave very good results. There are other models
+and tuning parameters that could be tested in the future, but any better
+prediction from them would only be marginal at best.
